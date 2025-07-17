@@ -1,0 +1,286 @@
+// schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- Modelos de Usuario y Gamificación ---
+
+model User {
+  id              String         @id @default(uuid())
+  username        String         @unique
+  email           String         @unique
+  passwordHash    String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  level           Int            @default(1)
+  experiencePoints Int           @default(0)
+  currentRank     String         @default("Aprendiz") // e.g., "Aprendiz", "Historiador Júnior"
+  lastLogin       DateTime?
+  dailyStreak     Int            @default(0) // Contador de días consecutivos loggeados
+  userAchievements UserAchievement[]
+  userNotes       Note[]
+  userProgress    UserProgress[]
+  examAttempts    ExamAttempt[]
+  studySessionResults StudySessionResult[]
+}
+
+model Rank {
+  id      String   @id @default(uuid())
+  name    String   @unique // e.g., "Aprendiz", "Historiador Júnior"
+  minPoints Int
+  maxPoints Int? // Null if it's the highest rank
+}
+
+model Achievement {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String
+  iconUrl     String?
+  userAchievements UserAchievement[]
+}
+
+model UserAchievement {
+  id            String    @id @default(uuid())
+  userId        String
+  achievementId String
+  dateAchieved  DateTime  @default(now())
+  user          User      @relation(fields: [userId], references: [id])
+  achievement   Achievement @relation(fields: [achievementId], references: [id])
+
+  @@unique([userId, achievementId]) // Un usuario solo puede tener un logro una vez
+}
+
+// --- Modelos de Contenido Histórico ---
+
+model HistoricalFigure {
+  id          String   @id @default(uuid())
+  name        String
+  aliases     String[] // Array de strings para otros nombres
+  birthDate   DateTime? @db.Date
+  deathDate   DateTime? @db.Date
+  biography   String
+  achievements String[] // Array de strings para logros clave
+  battles     String[] // Array de strings para batallas importantes
+  quotes      String[] // Array de strings para citas célebres
+  imageUrl    String?
+  sourceLinks String[] // Array de strings para URLs de fuentes externas
+  category    String? // e.g., "Emperador", "Filósofo"
+  notes       Note[]
+  historicalConnections HistoricalConnection[] @relation("FigureToFigure")
+  historicalConnectionsSource HistoricalConnection[] @relation("SourceFigureToConnection")
+  timelineEvents TimelineEvent[]
+}
+
+model Religion {
+  id            String   @id @default(uuid())
+  name          String   @unique
+  originRegion  String?
+  originEra     String?
+  description   String
+  mainDeities   String[] // Array de strings para deidades principales
+  sacredTexts   String[]
+  rituals       String[]
+  festivities   String[]
+  symbols       String[]
+  imageUrl      String?
+  myths         Myth[]
+  notes         Note[]
+}
+
+model Myth {
+  id            String   @id @default(uuid())
+  name          String
+  description   String
+  characters    String[] // Array de strings para personajes del mito
+  culturalSignificance String?
+  religionId    String? // Opcional, para mitos que no pertenecen a una religión específica
+  religion      Religion? @relation(fields: [religionId], references: [id])
+  sourceLinks   String[]
+  notes         Note[]
+}
+
+model HistoricalPlace {
+  id          String   @id @default(uuid())
+  name        String
+  description String
+  latitude    Float
+  longitude   Float
+  eventsOccurred String[] // Array de strings para eventos importantes
+  architecture String?
+  imageUrl    String?
+  placeType   String? // e.g., "Ciudad", "Templo", "Sitio Arqueológico"
+  notes       Note[]
+  timelineEvents TimelineEvent[]
+}
+
+model MapLayer {
+  id          String   @id @default(uuid())
+  name        String   @unique // e.g., "Imperio Romano 100 d.C.", "Rutas Comerciales"
+  description String?
+  type        String // e.g., "political", "trade", "military"
+  geoJsonData Json // Almacena datos GeoJSON para la capa del mapa
+  // Podría haber un campo para visibilidad y orden de capas
+}
+
+model Timeline {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  era         String? // e.g., "Antigüedad", "Edad Media"
+  category    String? // e.g., "Guerras", "Arte", "Ciencia"
+  timelineEvents TimelineEvent[]
+}
+
+model TimelineEvent {
+  id             String   @id @default(uuid())
+  title          String
+  description    String?
+  date           DateTime @db.Date // Fecha exacta o aproximada del evento
+  era            String?
+  category       String?
+  timelineId     String
+  timeline       Timeline @relation(fields: [timelineId], references: [id])
+  historicalFigureId String?
+  historicalFigure HistoricalFigure? @relation(fields: [historicalFigureId], references: [id])
+  historicalPlaceId String?
+  historicalPlace HistoricalPlace? @relation(fields: [historicalPlaceId], references: [id])
+  // Otros IDs de modelos si un evento puede estar relacionado con múltiples tipos de contenido
+}
+
+// --- Modelo para Notas Personalizadas ---
+
+model Note {
+  id                  String   @id @default(uuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id])
+  content             String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  // Relaciones polimórficas (se puede adjuntar a diferentes tipos de contenido)
+  historicalFigureId  String?
+  historicalFigure    HistoricalFigure? @relation(fields: [historicalFigureId], references: [id])
+  religionId          String?
+  religion            Religion? @relation(fields: [religionId], references: [id])
+  mythId              String?
+  myth                Myth? @relation(fields: [mythId], references: [id])
+  historicalPlaceId   String?
+  historicalPlace     HistoricalPlace? @relation(fields: [historicalPlaceId], references: [id])
+}
+
+
+// --- Modelos de Exámenes y Estudio Activo ---
+
+model Exam {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  level       String   // e.g., "Básico", "Intermedio", "Avanzado"
+  topic       String?  // e.g., "Roma Antigua", "Mitología Griega"
+  questions   Question[]
+  examAttempts ExamAttempt[]
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  OPEN_ENDED
+  TRUE_FALSE
+  MATCHING
+  CHRONOLOGICAL_ORDER
+  MAP_LOCATION
+}
+
+model Question {
+  id          String       @id @default(uuid())
+  examId      String
+  exam        Exam         @relation(fields: [examId], references: [id])
+  text        String
+  type        QuestionType
+  options     String[] // Para MULTIPLE_CHOICE o MATCHING (parte izquierda)
+  correctAnswer String[] // Para MULTIPLE_CHOICE, TRUE_FALSE, OPEN_ENDED (la respuesta esperada)
+  explanation String? // Explicación de la respuesta correcta
+  // Para emparejamiento, podría ser un JSON como: { "key1": "value1", "key2": "value2" }
+  // Para ordenamiento, podría ser un JSON como: ["evento1", "evento2"]
+}
+
+model ExamAttempt {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  examId      String
+  exam        Exam     @relation(fields: [examId], references: [id])
+  score       Int
+  completedAt DateTime @default(now())
+  answers     Json // Almacena las respuestas del usuario a cada pregunta
+}
+
+model FlashcardSet {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  creatorId   String? // Si los usuarios pueden crear sus propios sets
+  cards       Flashcard[]
+}
+
+model Flashcard {
+  id            String   @id @default(uuid())
+  flashcardSetId String
+  flashcardSet  FlashcardSet @relation(fields: [flashcardSetId], references: [id])
+  question      String
+  answer        String
+  lastReviewed  DateTime?
+  nextReview    DateTime? // Para el algoritmo de repetición espaciada
+  easeFactor    Float    @default(2.5) // Factor de facilidad para el algoritmo
+  repetitions   Int      @default(0) // Número de repeticiones para el algoritmo
+}
+
+model StudySessionResult {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  sessionType  String   // e.g., "Flashcards", "Trivia", "ChronologicalOrder"
+  score        Int?      // Puntuación si aplica (ej. Trivia)
+  duration     Int      // Duración en segundos
+  completedAt  DateTime @default(now())
+  // Podría haber un campo 'details' JSON para almacenar datos específicos de la sesión (ej. preguntas fallidas)
+}
+
+// --- Modelo de Conexiones Históricas ---
+
+model HistoricalConnection {
+  id          String   @id @default(uuid())
+  name        String? // Nombre de la conexión (ej. "Familia Julio-Claudia", "Maestro-Discípulo")
+  description String?
+  type        String   // e.g., "Genealogy", "Influence", "Hierarchy", "Relationship"
+
+  // Las conexiones pueden ser entre dos figuras, o más complejo
+  sourceFigureId String?
+  sourceFigure   HistoricalFigure? @relation("SourceFigureToConnection", fields: [sourceFigureId], references: [id])
+
+  targetFigureId String?
+  targetFigure   HistoricalFigure? @relation("FigureToFigure", fields: [targetFigureId], references: [id])
+
+  // Para conexiones más complejas o entre diferentes tipos de entidades, considera un modelo de "Node" y "Edge"
+  // donde los nodos pueden ser figuras, lugares, conceptos, etc.
+}
+
+// --- Modelo adicional para progreso de usuario ---
+
+model UserProgress {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  entityType  String   // e.g., "character", "religion", "myth", "place"
+  entityId    String   // ID de la entidad (personaje, religión, etc.)
+  progress    Float    @default(0.0) // Porcentaje de progreso (0.0 - 1.0)
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, entityType, entityId])
+} 

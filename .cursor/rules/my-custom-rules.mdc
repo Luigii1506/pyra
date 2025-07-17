@@ -1,0 +1,188 @@
+---
+description: Custom rules for the History Learning App (Duolingo-style) project. These rules define coding standards, architectural patterns, and best practices for developing with Next.js, Prisma, and PostgreSQL.
+globs:
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "**/*.js"
+  - "**/*.jsx"
+  - "**/*.mjs"
+  - "**/*.mts"
+alwaysApply: true
+---
+
+# Custom Rules for History Learning App Project
+
+This document outlines custom rules for code generation and development within the History Learning App project. Adhering to these guidelines ensures consistency, maintainability, and optimal performance across the application, which leverages **Next.js, Prisma, and PostgreSQL**.
+
+---
+
+## 1. Project Structure and Naming Conventions
+
+### 1.1 Folder Structure
+
+- **`/src`**: All application source code.
+  - **`/src/pages`**: Next.js pages (routes) and API routes.
+    - `/src/pages/api`: API endpoints (e.g., `api/auth`, `api/history`).
+  - **`/src/components`**: Reusable React components.
+    - Organize components into subfolders by feature or category (e.g., `components/ui`, `components/auth`, `components/history/characters`).
+  - **`/src/lib`**: Utility functions, helpers, and configurations.
+    - `/src/lib/prisma`: Prisma client initialization.
+    - `/src/lib/auth`: Authentication helpers.
+    - `/src/lib/utils`: General utility functions.
+  - **`/src/hooks`**: Custom React Hooks.
+  - **`/src/styles`**: Global styles, Tailwind CSS configuration, and component-specific stylesheets (if not using CSS-in-JS).
+  - **`/src/types`**: TypeScript type definitions and interfaces.
+  - **`/src/server`**: Server-side logic not directly tied to API routes, e.g., service layers, database operations.
+    - `/src/server/services`: Business logic (e.g., `characterService.ts`).
+    - `/src/server/db`: Direct database interactions (e.g., `db.ts`, Prisma extensions).
+  - **`/src/constants`**: Application-wide constants.
+
+### 1.2 Naming Conventions
+
+- **Files/Folders**:
+  - **`kebab-case`** for file and folder names (e.g., `historical-figure.ts`, `user-profile`).
+  - Next.js API routes should follow `kebab-case` for folder names (e.g., `api/historical-figures/[id].ts`).
+- **Components**: **`PascalCase`** (e.g., `UserProfile`, `HistoricalFigureCard`).
+- **Variables/Functions**: **`camelCase`** (e.g., `userName`, `getHistoricalFigure`).
+- **Constants**: **`SCREAMING_SNAKE_CASE`** (e.g., `MAX_POINTS_PER_EXAM`).
+- **TypeScript Interfaces/Types**: **`PascalCase`** (e.g., `IUser`, `HistoricalFigure`). Prefer `type` aliases or direct `interface` declarations over `I` prefixes unless explicitly required by existing codebase conventions.
+- **Prisma Models**: **`PascalCase`** and singular (e.g., `User`, `HistoricalFigure`).
+
+---
+
+## 2. Next.js Best Practices
+
+### 2.1 Data Fetching
+
+- **Server Components (React 18)**: Prefer **Server Components** for data fetching where possible to reduce client-side bundle size and improve performance.
+- **`getServerSideProps`**: Use for pages requiring dynamic data on each request, where SEO is crucial, and the data changes frequently.
+- **`getStaticProps`**: Use for pages with data that changes infrequently, suitable for static generation and CDN caching. Revalidate using `revalidate` option for updated content.
+- **Client-Side Fetching (SWR/React Query)**: Use for client-interactive data fetching, mutations, and real-time updates within components.
+
+### 2.2 API Routes
+
+- Structure API routes logically based on resources (e.g., `/api/characters`, `/api/exams`).
+- Implement proper **error handling** and **status codes** (e.g., 200 OK, 201 Created, 400 Bad Request, 401 Unauthorized, 404 Not Found, 500 Internal Server Error).
+- **Authentication and Authorization**: Secure API routes using authentication middleware (e.g., session-based, JWT) and role-based access control.
+
+### 2.3 Styling
+
+- Primarily use **Tailwind CSS** for utility-first styling.
+- For component-specific styles or complex layouts, consider **CSS Modules** (`.module.css`).
+- Avoid inline styles where possible; favor Tailwind classes.
+
+---
+
+## 3. Prisma and Database (PostgreSQL) Guidelines
+
+### 3.1 Schema Design (`schema.prisma`)
+
+- Follow the provided **Prisma schema** (refer to `schema.prisma` in the project root) for all model definitions.
+- Use explicit **`@relation`** attributes for clear relationship definitions.
+- Apply **`@default(uuid())`** for unique identifiers where appropriate.
+- Use **`@unique`** for fields that must be unique (e.g., `User.email`, `Religion.name`).
+- Define **`enum`** types in Prisma for constrained fields (e.g., `QuestionType`).
+
+### 3.2 Data Access
+
+- All database operations should go through the **Prisma Client**.
+- Encapsulate complex database queries within **server-side services** (`/src/server/services`) to separate business logic from API route handlers.
+- Use **transaction management** for atomic operations involving multiple database writes.
+
+### 3.3 Migrations
+
+- Generate and apply Prisma migrations (`npx prisma migrate dev`) for any schema changes.
+- Ensure migration files are reviewed and committed to version control.
+- Avoid manual changes to the database schema outside of Prisma migrations.
+
+---
+
+## 4. TypeScript Best Practices
+
+### 4.1 Type Safety
+
+- **Strict Typing**: Enforce strict TypeScript rules.
+- **Interfaces and Types**: Define clear interfaces or types for all data structures (props, API responses, state).
+- **`any` Avoidance**: Minimize the use of `any`. If necessary, provide a clear justification in comments.
+- **Enums**: Use TypeScript enums or union types for predefined sets of values.
+
+### 4.2 Function Signatures
+
+- Clearly define input parameters and return types for all functions.
+
+---
+
+## 5. Code Quality and Maintainability
+
+### 5.1 Linting and Formatting
+
+- Adhere to **ESLint** and **Prettier** configurations defined in the project.
+- Automated formatting should be applied on commit (e.g., Husky pre-commit hook).
+
+### 5.2 Error Handling
+
+- Implement robust **try-catch blocks** for asynchronous operations and external API calls.
+- Provide meaningful error messages to aid debugging.
+- Use a centralized error logging mechanism.
+
+### 5.3 Comments and Documentation
+
+- Write clear, concise comments for complex logic, non-obvious code, or edge cases.
+- Document public API functions and components using JSDoc-style comments.
+- Ensure the `README.md` is kept up-to-date with setup instructions and project overview.
+
+### 5.4 Performance
+
+- **Optimize Image Loading**: Use `next/image` for optimized image delivery.
+- **Code Splitting**: Leverage Next.js automatic code splitting.
+- **Minimize Re-renders**: Use `React.memo`, `useCallback`, `useMemo` where appropriate to prevent unnecessary component re-renders.
+- **Database Query Optimization**: Avoid N+1 queries. Use Prisma's `include` or `select` for efficient data retrieval.
+
+---
+
+## 6. Testing
+
+### 6.1 Unit Tests
+
+- Write unit tests for individual functions, utility helpers, and small components.
+- Use **Jest** and **React Testing Library** for testing React components.
+
+### 6.2 Integration Tests
+
+- Implement integration tests for API routes and interactions between different parts of the application.
+
+### 6.3 End-to-End (E2E) Tests
+
+- Consider using **Cypress** or **Playwright** for E2E tests to simulate user flows.
+
+---
+
+## 7. Security
+
+### 7.1 Input Validation
+
+- Validate all user inputs on both the **client-side** (for user experience) and **server-side** (for security).
+- Prevent common vulnerabilities like XSS, SQL injection (Prisma helps mitigate this, but context matters), and CSRF.
+
+### 7.2 Environment Variables
+
+- Store sensitive information (database credentials, API keys) in **environment variables** (`.env.local`).
+- Never commit sensitive `.env` files to version control.
+
+### 7.3 Authentication and Authorization
+
+- Ensure proper authentication for all protected routes and API endpoints.
+- Implement **role-based access control (RBAC)** for administrative functionalities (e.g., content creation, modification).
+
+---
+
+## 8. Git Workflow
+
+### 8.1 Branching Strategy
+
+- Use a feature-branching workflow (e.g., Git Flow or GitHub Flow).
+- Branch names should be descriptive (e.g., `feat/add-flashcards`, `fix/login-bug`).
+
+### 8.2 Commit Messages
+
+- Write clear and concise commit messages following a conventional commit style (e.g., `feat: add new historical figures module`, `fix: correct exam scoring`).
