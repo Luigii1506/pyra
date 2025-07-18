@@ -30,9 +30,26 @@ export { default as useMapGame } from "./geography/useMapGame.js";
 export { default as DailyContent } from "./daily/DailyContent.js";
 export { default as useDailyContent } from "./daily/useDailyContent.js";
 
-// Quotes Game
+// Quotes Game (Main exports)
 export { default as QuotesGame } from "./quotes/QuotesGame.js";
 export { default as useQuotesGame } from "./quotes/useQuotesGame.js";
+
+// Quotes Game (Modular components - for advanced usage)
+export {
+  QuotesGameSetup,
+  QuotesGamePlay,
+  QuotesGameResults,
+} from "./quotes/components";
+
+// Quotes Game (Utils and constants)
+export {
+  getScoreMessage,
+  getCategoryIcon,
+  getTimerColor,
+  calculateProgress,
+  SAMPLE_QUOTES,
+  GAME_CONFIG as QUOTES_GAME_CONFIG,
+} from "./quotes";
 
 // Game Types & Constants
 export const GAME_TYPES = {
