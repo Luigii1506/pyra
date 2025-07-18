@@ -25,6 +25,7 @@ const useQuotesGame = (customQuotes = []) => {
   const [showAnswer, setShowAnswer] = useState(false);
   const [questionTimeLimit, setQuestionTimeLimit] = useState(30);
   const [currentQuestionTime, setCurrentQuestionTime] = useState(30);
+  const [gameResults, setGameResults] = useState([]);
 
   // Historical quotes database
   const defaultQuotes = [
@@ -228,6 +229,7 @@ const useQuotesGame = (customQuotes = []) => {
       setCurrentQuestionTime(questionTimeLimit);
       setGameState("setup");
       setIsTimerActive(false);
+      setGameResults([]);
     },
     [customQuotes, shuffleArray, questionTimeLimit]
   );
@@ -313,6 +315,15 @@ const useQuotesGame = (customQuotes = []) => {
     setScore((prev) => Math.max(prev - 15, 0));
     setShowAnswer(true);
 
+    // Store result for detailed review (time up = no answer)
+    const result = {
+      question: currentQuestion,
+      selectedAnswer: null,
+      isCorrect: false,
+      timeUsed: questionTimeLimit,
+    };
+    setGameResults((prev) => [...prev, result]);
+
     setTimeout(() => {
       const nextIndex = questionIndex + 1;
       if (nextIndex < quotes.length) {
@@ -326,7 +337,14 @@ const useQuotesGame = (customQuotes = []) => {
         setIsTimerActive(false);
       }
     }, 3000);
-  }, [gameState, questionIndex, quotes, generateQuestion, questionTimeLimit]);
+  }, [
+    gameState,
+    questionIndex,
+    quotes,
+    generateQuestion,
+    questionTimeLimit,
+    currentQuestion,
+  ]);
 
   // Submit answer
   const submitAnswer = useCallback(
@@ -361,6 +379,15 @@ const useQuotesGame = (customQuotes = []) => {
       }
 
       setShowAnswer(true);
+
+      // Store result for detailed review
+      const result = {
+        question: currentQuestion,
+        selectedAnswer: answer,
+        isCorrect: isCorrect,
+        timeUsed: questionTimeLimit - currentQuestionTime,
+      };
+      setGameResults((prev) => [...prev, result]);
 
       // Move to next question after delay
       setTimeout(() => {
@@ -483,6 +510,7 @@ const useQuotesGame = (customQuotes = []) => {
     hints,
     hintsUsed,
     showAnswer,
+    gameResults,
 
     // Actions
     initializeGame,
