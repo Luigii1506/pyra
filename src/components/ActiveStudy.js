@@ -31,6 +31,7 @@ import {
   GeographyGame,
   DailyContent,
   QuotesGame,
+  FlashcardsGame,
   GameCard,
   GAME_TYPES,
 } from "./games/index.js";
@@ -159,7 +160,7 @@ const ActiveStudy = () => {
 
   const startFlashcardStudy = (deck) => {
     setSelectedDeck(deck);
-    setActiveMode("flashcards");
+    setActiveMode(`game-${GAME_TYPES.FLASHCARDS}`);
   };
 
   const renderDashboard = () => (
@@ -488,6 +489,9 @@ const ActiveStudy = () => {
 
       case `game-${GAME_TYPES.QUOTES}`:
         return <QuotesGame onClose={handleBackToDashboard} />;
+
+      case `game-${GAME_TYPES.FLASHCARDS}`:
+        return <FlashcardsGame onClose={handleBackToDashboard} />;
 
       case "flashcards":
         return renderPlaceholder(

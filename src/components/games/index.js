@@ -51,6 +51,28 @@ export {
   GAME_CONFIG as QUOTES_GAME_CONFIG,
 } from "./quotes";
 
+// Flashcards Game (Main exports)
+export { default as FlashcardsGame } from "./flashcards/FlashcardsGame.js";
+export { useFlashcardsGame } from "./flashcards/useFlashcardsGame.js";
+
+// Flashcards Game (Modular components - for advanced usage)
+export {
+  DeckSelection,
+  CardDisplay,
+  SessionComplete,
+} from "./flashcards/components";
+
+// Flashcards Game (Utils and constants)
+export {
+  calculateNextReview,
+  createStudySession,
+  getMasteryConfig,
+  SAMPLE_DECKS,
+  SM2_CONFIG,
+  CARD_STATES,
+  ANSWER_TYPES,
+} from "./flashcards";
+
 // Game Types & Constants
 export const GAME_TYPES = {
   TRIVIA: "trivia",
@@ -94,5 +116,11 @@ export const GAME_CONFIG = {
     pointsPerCorrect: 100,
     streakBonus: 15,
     maxHints: 3,
+  },
+  [GAME_TYPES.FLASHCARDS]: {
+    defaultNewCardsLimit: 20,
+    defaultReviewCardsLimit: 100,
+    defaultTimeLimit: 30,
+    defaultEaseFactor: 2.5,
   },
 };

@@ -87,7 +87,7 @@ const AnswerOptions = ({
             <div className={getCircleClasses(option)}>
               {getOptionLabel(index)}
             </div>
-            <span className="flex-1">
+            <span className="flex-1 text-black">
               {gameMode === "quote-to-person" ? option : `"${option}"`}
             </span>
             {showAnswer && option === correctAnswer && (
