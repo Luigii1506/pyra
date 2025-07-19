@@ -18,9 +18,27 @@ export { default as useTriviaGame } from "./trivia/useTriviaGame.js";
 export { default as TimelineGame } from "./timeline/TimelineGame.js";
 export { default as useTimelineGame } from "./timeline/useTimelineGame.js";
 
-// Matching Game
+// Matching Game (Main exports)
 export { default as MatchingGame } from "./matching/MatchingGame.js";
-export { default as useMatchingGame } from "./matching/useMatchingGame.js";
+export { useMatchingGame } from "./matching/useMatchingGame.js";
+
+// Matching Game (Modular components - for advanced usage)
+export {
+  MatchingGameSetup,
+  MatchingGamePlay,
+  MatchingGameResults,
+} from "./matching/components";
+
+// Matching Game (Utils and constants)
+export {
+  selectPairsForDifficulty,
+  convertPairsToItems,
+  areItemsMatched,
+  getPerformanceLevel,
+  MATCHING_TYPES,
+  DIFFICULTY_LEVELS,
+  ALL_MATCHING_PAIRS,
+} from "./matching";
 
 // Geography Game
 export { default as GeographyGame } from "./geography/GeographyGame.js";
@@ -104,8 +122,12 @@ export const GAME_CONFIG = {
     maxAttempts: 3,
   },
   [GAME_TYPES.MATCHING]: {
-    shuffleDefault: true,
-    maxAttempts: 5,
+    defaultDifficulty: 'medium',
+    defaultTimeLimit: 180,
+    basePointsPerMatch: 100,
+    streakBonusMultiplier: 0.2,
+    hintPenalty: 50,
+    maxHintsPerDifficulty: { easy: 3, medium: 2, hard: 1 },
   },
   [GAME_TYPES.GEOGRAPHY]: {
     toleranceRadius: 8, // percentage of map

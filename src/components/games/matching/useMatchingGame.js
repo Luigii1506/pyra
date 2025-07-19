@@ -1,329 +1,459 @@
 /**
  * useMatchingGame Hook
- * Custom hook for managing matching game state and logic
+ * Hook personalizado para manejar la lógica del juego de emparejamiento histórico
  * @created 2024-12-19
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { 
+  selectPairsForDifficulty,
+  convertPairsToItems,
+  areItemsMatched,
+  calculateMatchScore,
+  calculateFinalScore,
+  getFeedbackMessage,
+  selectHint,
+  getPerformanceStats,
+  getPerformanceLevel,
+  validateGameConfig,
+  shuffleArray
+} from './utils/matching-utils.js';
+import { 
+  MATCHING_GAME_STATES, 
+  DIFFICULTY_LEVELS,
+  CARD_STATES,
+  FEEDBACK_CONFIG 
+} from './constants/matching-constants.js';
 
-const useMatchingGame = (initialPairs = []) => {
-  const [gameState, setGameState] = useState("setup"); // setup, playing, paused, completed
-  const [pairs, setPairs] = useState([]); // Original pairs to match
-  const [shuffledItems, setShuffledItems] = useState([]); // Shuffled items for display
-  const [selectedItems, setSelectedItems] = useState([]); // Currently selected items
-  const [matchedPairs, setMatchedPairs] = useState([]); // Successfully matched pairs
-  const [wrongAttempts, setWrongAttempts] = useState(0);
+/**
+ * Hook principal para el juego de emparejamiento
+ * @param {Object} options - Opciones de configuración
+ * @returns {Object} Estado y funciones del juego
+ */
+export const useMatchingGame = (options = {}) => {
+  // Configuración inicial validada
+  const config = useMemo(() => validateGameConfig(options), [options]);
+
+  // Estados principales del juego
+  const [gameState, setGameState] = useState(MATCHING_GAME_STATES.SETUP);
+  const [difficulty, setDifficulty] = useState(config.difficulty);
+  const [matchingType, setMatchingType] = useState(config.matchingType);
+  const [pairs, setPairs] = useState([]);
+  const [items, setItems] = useState([]);
+  const [selectedItems, setSelectedItems] = useState([]);
+  const [matchedPairs, setMatchedPairs] = useState([]);
+  const [cardStates, setCardStates] = useState({});
+  
+  // Estados de puntuación y estadísticas
   const [score, setScore] = useState(0);
-  const [timeElapsed, setTimeElapsed] = useState(0);
-  const [isTimerActive, setIsTimerActive] = useState(false);
   const [streak, setStreak] = useState(0);
   const [maxStreak, setMaxStreak] = useState(0);
-  const [hints, setHints] = useState(3);
+  const [wrongAttempts, setWrongAttempts] = useState(0);
   const [hintsUsed, setHintsUsed] = useState(0);
+  const [hintsAvailable, setHintsAvailable] = useState(config.hintsAllowed);
+  
+  // Estados de tiempo
+  const [timeElapsed, setTimeElapsed] = useState(0);
+  const [timeLimit, setTimeLimit] = useState(config.timeLimit);
+  const [isTimerActive, setIsTimerActive] = useState(false);
+  
+  // Estados de feedback y UI
+  const [feedback, setFeedback] = useState('');
+  const [showHint, setShowHint] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  // Sample historical pairs data
-  const defaultPairs = [
-    {
-      id: 1,
-      left: "Julio César",
-      right: "República Romana",
-      category: "leaders",
-    },
-    {
-      id: 2,
-      left: "Cleopatra",
-      right: "Egipto Ptolemaico",
-      category: "leaders",
-    },
-    {
-      id: 3,
-      left: "Alejandro Magno",
-      right: "Imperio Macedonio",
-      category: "leaders",
-    },
-    { id: 4, left: "Hammurabi", right: "Babilonia", category: "leaders" },
-    { id: 5, left: "Pericles", right: "Atenas Clásica", category: "leaders" },
-    { id: 6, left: "Ramsés II", right: "Imperio Egipcio", category: "leaders" },
-    { id: 7, left: "Coliseo", right: "Roma", category: "monuments" },
-    {
-      id: 8,
-      left: "Pirámides de Giza",
-      right: "Egipto",
-      category: "monuments",
-    },
-  ];
+  /**
+   * Configuración actual de dificultad
+   */
+  const difficultyConfig = useMemo(() => {
+    return DIFFICULTY_LEVELS[difficulty.toUpperCase()] || DIFFICULTY_LEVELS.MEDIUM;
+  }, [difficulty]);
 
-  // Timer effect
+  /**
+   * Progreso del juego
+   */
+  const progress = useMemo(() => {
+    const totalPairs = difficultyConfig.pairs;
+    const completedPairs = matchedPairs.length;
+    const percentage = totalPairs > 0 ? (completedPairs / totalPairs) * 100 : 0;
+    
+    return {
+      completed: completedPairs,
+      total: totalPairs,
+      percentage: Math.round(percentage),
+      remaining: totalPairs - completedPairs,
+    };
+  }, [matchedPairs.length, difficultyConfig.pairs]);
+
+  /**
+   * Estadísticas de rendimiento en tiempo real
+   */
+  const performanceStats = useMemo(() => {
+    return getPerformanceStats({
+      wrongAttempts,
+      hintsUsed,
+      maxStreak,
+      timeElapsed
+    }, difficulty);
+  }, [wrongAttempts, hintsUsed, maxStreak, timeElapsed, difficulty]);
+
+  /**
+   * Timer del juego
+   */
   useEffect(() => {
     let interval;
-    if (isTimerActive && gameState === "playing") {
+    
+    if (isTimerActive && gameState === MATCHING_GAME_STATES.PLAYING) {
       interval = setInterval(() => {
-        setTimeElapsed((prev) => prev + 1);
+        setTimeElapsed(prev => {
+          const newTime = prev + 1;
+          
+          // Verificar si se acabó el tiempo
+          if (newTime >= timeLimit) {
+            completeGame(true); // true = por tiempo agotado
+            return prev;
+          }
+          
+          return newTime;
+        });
       }, 1000);
     }
-    return () => clearInterval(interval);
-  }, [isTimerActive, gameState]);
+    
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [isTimerActive, gameState, timeLimit]);
 
-  // Shuffle array utility
-  const shuffleArray = useCallback((array) => {
-    const shuffled = [...array];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    return shuffled;
-  }, []);
-
-  // Initialize game
-  const initializeGame = useCallback(
-    (difficulty = "medium") => {
-      const gamePairs = initialPairs.length > 0 ? initialPairs : defaultPairs;
-
-      // Adjust number of pairs based on difficulty
-      const pairCount =
-        difficulty === "easy" ? 4 : difficulty === "medium" ? 6 : 8;
-      const selectedPairs = gamePairs.slice(0, pairCount);
-
+  /**
+   * Inicializa un nuevo juego
+   */
+  const initializeGame = useCallback(async (newDifficulty = difficulty, newMatchingType = matchingType) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      // Validar y establecer configuración
+      const newDifficultyConfig = DIFFICULTY_LEVELS[newDifficulty.toUpperCase()];
+      if (!newDifficultyConfig) {
+        throw new Error(`Dificultad no válida: ${newDifficulty}`);
+      }
+      
+      setDifficulty(newDifficulty);
+      setMatchingType(newMatchingType);
+      setTimeLimit(newDifficultyConfig.timeLimit);
+      setHintsAvailable(newDifficultyConfig.hintsAllowed);
+      
+      // Seleccionar pares para el juego
+      const selectedPairs = selectPairsForDifficulty(newDifficulty, newMatchingType);
+      if (selectedPairs.length < newDifficultyConfig.pairs) {
+        throw new Error('No hay suficientes pares disponibles para esta configuración');
+      }
+      
+      // Convertir pares a elementos individuales
+      const gameItems = convertPairsToItems(selectedPairs);
+      
+      // Resetear estados
       setPairs(selectedPairs);
-
-      // Create shuffled items for matching
-      const leftItems = selectedPairs.map((pair) => ({
-        id: `left-${pair.id}`,
-        text: pair.left,
-        pairId: pair.id,
-        type: "left",
-        category: pair.category,
-      }));
-
-      const rightItems = selectedPairs.map((pair) => ({
-        id: `right-${pair.id}`,
-        text: pair.right,
-        pairId: pair.id,
-        type: "right",
-        category: pair.category,
-      }));
-
-      const allItems = [...leftItems, ...rightItems];
-      setShuffledItems(shuffleArray(allItems));
-
-      // Reset game state
+      setItems(gameItems);
       setSelectedItems([]);
       setMatchedPairs([]);
-      setWrongAttempts(0);
+      setCardStates({});
       setScore(0);
-      setTimeElapsed(0);
       setStreak(0);
       setMaxStreak(0);
-      setHints(3);
+      setWrongAttempts(0);
       setHintsUsed(0);
-      setGameState("setup");
+      setTimeElapsed(0);
+      setFeedback('');
+      setShowHint(null);
       setIsTimerActive(false);
-    },
-    [initialPairs, shuffleArray]
-  );
+      setGameState(MATCHING_GAME_STATES.SETUP);
+      
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [difficulty, matchingType]);
 
-  // Start game
+  /**
+   * Inicia el juego
+   */
   const startGame = useCallback(() => {
-    setGameState("playing");
+    setGameState(MATCHING_GAME_STATES.PLAYING);
     setIsTimerActive(true);
+    setFeedback('¡Encuentra los pares! Haz clic en dos elementos relacionados.');
   }, []);
 
-  // Pause/Resume game
+  /**
+   * Pausa o reanuda el juego
+   */
   const togglePause = useCallback(() => {
-    if (gameState === "playing") {
-      setGameState("paused");
+    if (gameState === MATCHING_GAME_STATES.PLAYING) {
+      setGameState(MATCHING_GAME_STATES.PAUSED);
       setIsTimerActive(false);
-    } else if (gameState === "paused") {
-      setGameState("playing");
+    } else if (gameState === MATCHING_GAME_STATES.PAUSED) {
+      setGameState(MATCHING_GAME_STATES.PLAYING);
       setIsTimerActive(true);
     }
   }, [gameState]);
 
-  // Select item
-  const selectItem = useCallback(
-    (item) => {
-      if (gameState !== "playing") return;
-      if (selectedItems.includes(item.id)) {
-        // Deselect item
-        setSelectedItems((prev) => prev.filter((id) => id !== item.id));
-        return;
+  /**
+   * Selecciona un elemento para emparejar
+   */
+  const selectItem = useCallback((item) => {
+    if (gameState !== MATCHING_GAME_STATES.PLAYING) return;
+    if (matchedPairs.includes(item.pairId)) return;
+    if (selectedItems.find(selected => selected.id === item.id)) return;
+    
+    const newSelectedItems = [...selectedItems, item];
+    setSelectedItems(newSelectedItems);
+    
+    // Actualizar estado visual del elemento
+    setCardStates(prev => ({
+      ...prev,
+      [item.id]: CARD_STATES.SELECTED
+    }));
+    
+    // Si seleccionamos 2 elementos, verificar emparejamiento
+    if (newSelectedItems.length === 2) {
+      setTimeout(() => {
+        checkMatch(newSelectedItems[0], newSelectedItems[1]);
+      }, 300); // Pequeño delay para mejor UX
+    }
+  }, [gameState, matchedPairs, selectedItems]);
+
+  /**
+   * Verifica si dos elementos forman un par correcto
+   */
+  const checkMatch = useCallback((item1, item2) => {
+    const isMatch = areItemsMatched(item1, item2);
+    
+    if (isMatch) {
+      // Emparejamiento correcto
+      const newMatchedPairs = [...matchedPairs, item1.pairId];
+      const newStreak = streak + 1;
+      const newMaxStreak = Math.max(maxStreak, newStreak);
+      const matchScore = calculateMatchScore({ streak: newStreak }, difficulty);
+      
+      setMatchedPairs(newMatchedPairs);
+      setStreak(newStreak);
+      setMaxStreak(newMaxStreak);
+      setScore(prev => prev + matchScore);
+      setFeedback(getFeedbackMessage(newStreak > 3 ? 'STREAK' : 'CORRECT'));
+      
+      // Actualizar estados visuales
+      setCardStates(prev => ({
+        ...prev,
+        [item1.id]: CARD_STATES.MATCHED,
+        [item2.id]: CARD_STATES.MATCHED
+      }));
+      
+      // Verificar si el juego se completó
+      if (newMatchedPairs.length === difficultyConfig.pairs) {
+        setTimeout(() => completeGame(false), FEEDBACK_CONFIG.GAME_COMPLETE_DELAY);
       }
+      
+    } else {
+      // Emparejamiento incorrecto
+      const newWrongAttempts = wrongAttempts + 1;
+      setWrongAttempts(newWrongAttempts);
+      setStreak(0);
+      setFeedback(getFeedbackMessage('WRONG'));
+      
+      // Mostrar error visual temporal
+      setCardStates(prev => ({
+        ...prev,
+        [item1.id]: CARD_STATES.WRONG,
+        [item2.id]: CARD_STATES.WRONG
+      }));
+      
+      // Volver al estado normal después del feedback
+      setTimeout(() => {
+        setCardStates(prev => ({
+          ...prev,
+          [item1.id]: CARD_STATES.IDLE,
+          [item2.id]: CARD_STATES.IDLE
+        }));
+      }, FEEDBACK_CONFIG.WRONG_ANIMATION_DURATION);
+    }
+    
+    // Limpiar selección
+    setSelectedItems([]);
+    
+    // Limpiar feedback después de un tiempo
+    setTimeout(() => {
+      setFeedback('');
+    }, 2000);
+    
+  }, [matchedPairs, streak, maxStreak, wrongAttempts, difficulty, difficultyConfig.pairs]);
 
-      if (selectedItems.length < 2) {
-        const newSelection = [...selectedItems, item.id];
-        setSelectedItems(newSelection);
-
-        // Check for match when 2 items are selected
-        if (newSelection.length === 2) {
-          checkMatch(newSelection);
-        }
-      }
-    },
-    [gameState, selectedItems]
-  );
-
-  // Check if selected items match
-  const checkMatch = useCallback(
-    (selection) => {
-      const [firstId, secondId] = selection;
-      const firstItem = shuffledItems.find((item) => item.id === firstId);
-      const secondItem = shuffledItems.find((item) => item.id === secondId);
-
-      if (
-        firstItem.pairId === secondItem.pairId &&
-        firstItem.type !== secondItem.type
-      ) {
-        // Correct match
-        setMatchedPairs((prev) => [...prev, firstItem.pairId]);
-        setStreak((prev) => {
-          const newStreak = prev + 1;
-          setMaxStreak((current) => Math.max(current, newStreak));
-          return newStreak;
-        });
-
-        // Calculate score based on time, streak, and hints used
-        const timeBonus = Math.max(100 - timeElapsed, 10);
-        const streakBonus = streak * 10;
-        const hintPenalty = hintsUsed * 20;
-        const baseScore = 100;
-        const matchScore = baseScore + timeBonus + streakBonus - hintPenalty;
-
-        setScore((prev) => prev + Math.max(matchScore, 50));
-
-        // Clear selection after a brief delay
-        setTimeout(() => {
-          setSelectedItems([]);
-        }, 1000);
-
-        // Check if game is completed
-        if (matchedPairs.length + 1 === pairs.length) {
-          setTimeout(() => {
-            setGameState("completed");
-            setIsTimerActive(false);
-          }, 1500);
-        }
-      } else {
-        // Wrong match
-        setWrongAttempts((prev) => prev + 1);
-        setStreak(0);
-        setScore((prev) => Math.max(prev - 20, 0));
-
-        // Clear selection after showing error
-        setTimeout(() => {
-          setSelectedItems([]);
-        }, 1500);
-      }
-    },
-    [
-      shuffledItems,
-      pairs.length,
-      matchedPairs.length,
-      streak,
-      timeElapsed,
-      hintsUsed,
-    ]
-  );
-
-  // Use hint
+  /**
+   * Usa una pista
+   */
   const useHint = useCallback(() => {
-    if (hints <= 0 || gameState !== "playing") return null;
+    if (hintsAvailable <= 0 || gameState !== MATCHING_GAME_STATES.PLAYING) {
+      return null;
+    }
+    
+    const hint = selectHint(items, matchedPairs);
+    if (!hint) {
+      setFeedback('No hay pistas disponibles en este momento');
+      return null;
+    }
+    
+    const newHintsUsed = hintsUsed + 1;
+    const newHintsAvailable = hintsAvailable - 1;
+    
+    setHintsUsed(newHintsUsed);
+    setHintsAvailable(newHintsAvailable);
+    setShowHint(hint);
+    setFeedback(getFeedbackMessage('HINT_USED'));
+    
+    // Mostrar pista visualmente
+    setCardStates(prev => ({
+      ...prev,
+      [hint.item1.id]: CARD_STATES.HINT,
+      [hint.item2.id]: CARD_STATES.HINT
+    }));
+    
+    // Ocultar pista después de un tiempo
+    setTimeout(() => {
+      setShowHint(null);
+      setCardStates(prev => ({
+        ...prev,
+        [hint.item1.id]: CARD_STATES.IDLE,
+        [hint.item2.id]: CARD_STATES.IDLE
+      }));
+    }, FEEDBACK_CONFIG.HINT_DISPLAY_DURATION);
+    
+    return hint;
+  }, [hintsAvailable, gameState, items, matchedPairs, hintsUsed]);
 
-    // Find an unmatched pair
-    const unmatchedPairs = pairs.filter(
-      (pair) => !matchedPairs.includes(pair.id)
-    );
-    if (unmatchedPairs.length === 0) return null;
+  /**
+   * Completa el juego
+   */
+  const completeGame = useCallback((timeUp = false) => {
+    setIsTimerActive(false);
+    setGameState(MATCHING_GAME_STATES.COMPLETED);
+    
+    if (timeUp) {
+      setFeedback('¡Tiempo agotado! Pero has hecho un gran esfuerzo.');
+    } else {
+      setFeedback('¡Felicitaciones! Has completado todos los pares.');
+    }
+  }, []);
 
-    const hintPair = unmatchedPairs[0];
-    setHints((prev) => prev - 1);
-    setHintsUsed((prev) => prev + 1);
+  /**
+   * Reinicia el juego con la misma configuración
+   */
+  const restartGame = useCallback(() => {
+    initializeGame(difficulty, matchingType);
+  }, [initializeGame, difficulty, matchingType]);
 
-    return {
-      left: hintPair.left,
-      right: hintPair.right,
-      category: hintPair.category,
-    };
-  }, [hints, gameState, pairs, matchedPairs]);
-
-  // Reset game
-  const resetGame = useCallback(() => {
-    initializeGame();
-  }, [initializeGame]);
-
-  // Get game statistics
-  const getStatistics = useCallback(() => {
-    const accuracy =
-      wrongAttempts === 0
-        ? 100
-        : Math.round(
-            (matchedPairs.length / (matchedPairs.length + wrongAttempts)) * 100
-          );
-
-    const averageTimePerPair =
-      matchedPairs.length > 0
-        ? Math.round(timeElapsed / matchedPairs.length)
-        : 0;
-
-    return {
+  /**
+   * Obtiene el resultado final del juego
+   */
+  const getFinalResults = useCallback(() => {
+    if (gameState !== MATCHING_GAME_STATES.COMPLETED) return null;
+    
+    const finalScore = calculateFinalScore({
       score,
       timeElapsed,
-      matchedPairs: matchedPairs.length,
-      totalPairs: pairs.length,
-      wrongAttempts,
-      accuracy,
-      maxStreak,
       hintsUsed,
-      averageTimePerPair,
-      completed: gameState === "completed",
+      wrongAttempts
+    }, difficulty);
+    
+    const stats = getPerformanceStats({
+      wrongAttempts,
+      hintsUsed,
+      maxStreak,
+      timeElapsed
+    }, difficulty);
+    
+    const performanceLevel = getPerformanceLevel(stats);
+    
+    return {
+      ...finalScore,
+      stats,
+      performanceLevel,
+      gameCompleted: matchedPairs.length === difficultyConfig.pairs,
+      timeUsed: timeElapsed,
+      timeLimit,
+      difficulty,
+      matchingType,
     };
-  }, [
-    score,
-    timeElapsed,
-    matchedPairs.length,
-    pairs.length,
-    wrongAttempts,
-    maxStreak,
-    hintsUsed,
-    gameState,
-  ]);
+  }, [gameState, score, timeElapsed, hintsUsed, wrongAttempts, difficulty, 
+      matchedPairs.length, difficultyConfig.pairs, maxStreak, timeLimit, matchingType]);
 
-  // Format time
-  const formatTime = useCallback((seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  /**
+   * Obtiene el estado visual de un elemento
+   */
+  const getCardState = useCallback((itemId) => {
+    return cardStates[itemId] || CARD_STATES.IDLE;
+  }, [cardStates]);
+
+  // Inicialización automática
+  useEffect(() => {
+    initializeGame();
   }, []);
 
   return {
-    // Game state
+    // Estados principales
     gameState,
+    difficulty,
+    matchingType,
     pairs,
-    shuffledItems,
+    items,
     selectedItems,
     matchedPairs,
-    wrongAttempts,
+    isLoading,
+    error,
+    
+    // Estados de puntuación
     score,
-    timeElapsed,
     streak,
     maxStreak,
-    hints,
+    wrongAttempts,
     hintsUsed,
-
-    // Actions
+    hintsAvailable,
+    
+    // Estados de tiempo
+    timeElapsed,
+    timeLimit,
+    isTimerActive,
+    
+    // Estados de UI
+    feedback,
+    showHint,
+    progress,
+    performanceStats,
+    difficultyConfig,
+    
+    // Acciones principales
     initializeGame,
     startGame,
     togglePause,
     selectItem,
     useHint,
-    resetGame,
-
-    // Utilities
-    getStatistics,
-    formatTime,
-
-    // Computed values
-    isCompleted: gameState === "completed",
-    progress: pairs.length > 0 ? (matchedPairs.length / pairs.length) * 100 : 0,
+    restartGame,
+    completeGame,
+    
+    // Funciones de consulta
+    getFinalResults,
+    getCardState,
+    
+    // Estados computados
+    canStart: gameState === MATCHING_GAME_STATES.SETUP && items.length > 0,
+    canPause: gameState === MATCHING_GAME_STATES.PLAYING,
+    canResume: gameState === MATCHING_GAME_STATES.PAUSED,
+    canUseHint: hintsAvailable > 0 && gameState === MATCHING_GAME_STATES.PLAYING,
+    isGameActive: gameState === MATCHING_GAME_STATES.PLAYING,
+    isGameComplete: gameState === MATCHING_GAME_STATES.COMPLETED,
+    hasError: !!error,
   };
 };
 
